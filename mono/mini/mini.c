@@ -5058,6 +5058,58 @@ SIG_HANDLER_SIGNATURE (mono_sigsegv_signal_handler)
 		mono_arch_handle_altstack_exception (ctx, info->si_addr, FALSE);
 	}
 #else
+	/*********************** Get stack of segsegv ***********************/
+	/* Add define of LOG */
+	#ifdef TARGET_ARM
+	#include "/home/lich/Documents/android-ndk-r10e/platforms/android-9/arch-arm/usr/include/android/log.h"
+	#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "CrashMonitor", __VA_ARGS__))
+	#else
+	#define LOGI printf
+	#endif
+
+	{
+		MonoContext new_ctx;
+		gint native_offset;
+		MonoLMF *lmf = mono_get_lmf ();
+		MonoJitInfo rji;
+		gboolean managed;
+		MonoContext pre_ctx = *(MonoContext*)ctx;
+		MonoDomain *domain = mono_domain_get ();
+		LOGI("[exception]mono_sigsegv_signal_handler callstack\n");
+
+		/* Write the log to local txt */
+
+		#define BUFLEN 255   
+		time_t t = time( 0 );   
+		char tmpBuf[BUFLEN];   
+		strftime(tmpBuf, BUFLEN, "%Y-%m-%d", localtime(&t));
+		char *name = "CrashMonitorLog.txt";
+		char *fileName = strcat(tmpBuf,name);
+		LOGI("[exception]Log file name is %s.\n",  fileName);
+		char tmpBuf2[BUFLEN] = "/storage/emulated/0/";
+		char *filePath = strcat(tmpBuf2, fileName);
+		LOGI("[exception]Log write to %s.\n",  filePath);
+		FILE *file = fopen(filePath, "a");
+		if(file==NULL)
+			LOGI("[exception]Log write to %s failed.\n",  filePath);
+
+		while (MONO_CONTEXT_GET_SP (&pre_ctx) < jit_tls->end_of_stack) {
+			ji = mono_find_jit_info (domain, jit_tls, &rji, NULL, &pre_ctx, &new_ctx, NULL, &lmf, &native_offset, &managed);
+			g_assert (ji);
+
+			if (ji == (gpointer)-1)
+				break;
+			LOGI("[exception]%s:%s\n",  ji->method->klass->name, ji->method->name);
+			pre_ctx = new_ctx;
+
+			//开始写入
+			fprintf(file, "[exception]%s:%s\n",  ji->method->klass->name, ji->method->name);
+		}
+		//关闭流
+		fclose(file);
+		//_exit (1);
+	}
+	/**************************Get stack end*******************************/
 
 	if (!ji) {
 		if (mono_chain_signal (SIG_HANDLER_PARAMS))
